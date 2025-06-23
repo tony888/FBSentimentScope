@@ -1,0 +1,14 @@
+requests==2.31.0
+selenium==4.15.0
+beautifulsoup4==4.12.2
+pandas==2.0.3
+numpy==1.24.3
+nltk==3.8.1
+textblob==0.17.1
+vaderSentiment==3.3.2
+python-dotenv==1.0.0
+matplotlib==3.7.2
+seaborn==0.12.2
+webdriver-manager==4.0.1
+pythainlp==4.0.2
+urllib3==1.26.20
