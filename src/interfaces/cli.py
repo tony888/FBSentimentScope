@@ -241,21 +241,21 @@ def setup():
     
     # Create .env file
     env_content = f"""# Facebook API Configuration
-FACEBOOK_APP_ID={app_id}
-FACEBOOK_APP_SECRET={app_secret}
-FACEBOOK_ACCESS_TOKEN={access_token}
-FACEBOOK_API_VERSION={api_version}
+    FACEBOOK_APP_ID={app_id}
+    FACEBOOK_APP_SECRET={app_secret}
+    FACEBOOK_ACCESS_TOKEN={access_token}
+    FACEBOOK_API_VERSION={api_version}
 
-# Analysis Configuration  
-POSITIVE_THRESHOLD={positive_threshold}
-NEGATIVE_THRESHOLD={negative_threshold}
-MAX_COMMENTS_PER_REQUEST=100
-RATE_LIMIT_DELAY=1.0
+    # Analysis Configuration  
+    POSITIVE_THRESHOLD={positive_threshold}
+    NEGATIVE_THRESHOLD={negative_threshold}
+    MAX_COMMENTS_PER_REQUEST=100
+    RATE_LIMIT_DELAY=1.0
 
-# Export Configuration
-EXPORT_FORMAT=csv
-OUTPUT_DIRECTORY=.
-"""
+    # Export Configuration
+    EXPORT_FORMAT=csv
+    OUTPUT_DIRECTORY=.
+    """
     
     try:
         with open('.env', 'w') as f:
