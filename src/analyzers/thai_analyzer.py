@@ -148,7 +148,7 @@ class ThaiSentimentAnalyzer(SentimentAnalyzer):
                 negative=0.0,
                 neutral=1.0,
                 confidence=1.0,
-                method=self.get_analyzer_name()
+                analyzer_used=self.get_analyzer_name()
             )
         
         try:
@@ -191,7 +191,7 @@ class ThaiSentimentAnalyzer(SentimentAnalyzer):
                 negative=negative,
                 neutral=neutral,
                 confidence=confidence,
-                method=self.get_analyzer_name()
+                analyzer_used=self.get_analyzer_name()
             )
             
         except Exception as e:

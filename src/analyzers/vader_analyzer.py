@@ -67,7 +67,7 @@ class VaderSentimentAnalyzer(SentimentAnalyzer):
                 negative=scores['neg'],
                 neutral=scores['neu'],
                 confidence=confidence,
-                method=self.get_analyzer_name()
+                analyzer_used=self.get_analyzer_name()
             )
             
         except Exception as e:
