@@ -28,63 +28,46 @@ class Language(Enum):
 @dataclass
 class Comment:
     """
-    Represents a Facebook comment with sentiment analysis results.
+    Represents a Facebook comment.
     
     Attributes:
         id: Unique identifier for the comment
-        text: The comment text content
+        content: The comment text content
         author: Name of the comment author
-        created_time: When the comment was created (ISO format)
+        created_time: When the comment was created
         likes_count: Number of likes on the comment
         replies_count: Number of replies to the comment
-        sentiment_score: Numerical sentiment score (-1 to 1)
-        sentiment_label: Categorical sentiment label
-        language: Detected language of the comment
-        confidence: Confidence score for sentiment analysis
-        analysis_method: Method used for sentiment analysis
     """
     id: str
-    text: str
+    content: str
     author: str
-    created_time: str
+    created_time: Optional[datetime] = None
     likes_count: int = 0
     replies_count: int = 0
-    sentiment_score: Optional[float] = None
-    sentiment_label: Optional[SentimentLabel] = None
-    language: Optional[Language] = None
-    confidence: Optional[float] = None
-    analysis_method: Optional[str] = None
-    
-    def __post_init__(self):
-        """Convert string enums to proper enum instances."""
-        if isinstance(self.sentiment_label, str):
-            self.sentiment_label = SentimentLabel(self.sentiment_label)
-        if isinstance(self.language, str):
-            self.language = Language(self.language)
 
 
 @dataclass
 class Post:
     """
-    Represents a Facebook post.
+    Represents a Facebook post with its comments.
     
     Attributes:
         id: Unique identifier for the post
-        message: The post content/message
-        created_time: When the post was created (ISO format)
-        likes_count: Number of likes on the post
-        comments_count: Total number of comments
-        shares_count: Number of times the post was shared
+        content: The post content/message
         author: Name of the post author
+        created_time: When the post was created
+        likes_count: Number of likes on the post
+        comments: List of comments on the post
+        shares_count: Number of times the post was shared
         url: URL to the post (if available)
     """
     id: str
-    message: str
-    created_time: str
+    content: str
+    author: str
+    created_time: Optional[datetime] = None
     likes_count: int = 0
-    comments_count: int = 0
+    comments: List[Comment] = field(default_factory=list)
     shares_count: int = 0
-    author: Optional[str] = None
     url: Optional[str] = None
 
 
@@ -98,15 +81,17 @@ class SentimentScore:
         positive: Positive sentiment component (0 to 1)
         negative: Negative sentiment component (0 to 1)
         neutral: Neutral sentiment component (0 to 1)
+        language: Language of the analyzed text
+        analyzer_used: Name of the analyzer used
         confidence: Confidence in the analysis (0 to 1)
-        method: Analysis method used
     """
     compound: float
     positive: float = 0.0
     negative: float = 0.0
     neutral: float = 0.0
+    language: Optional[str] = None
+    analyzer_used: str = "unknown"
     confidence: float = 0.0
-    method: str = "unknown"
     
     @property
     def label(self) -> SentimentLabel:
@@ -121,52 +106,57 @@ class SentimentScore:
 @dataclass
 class AnalysisResult:
     """
-    Comprehensive analysis results for a set of comments.
+    Comprehensive analysis results for a post and its comments.
     
     Attributes:
-        total_comments: Total number of comments analyzed
-        sentiment_distribution: Count of each sentiment category
-        language_distribution: Count of each language detected
-        average_sentiment: Average sentiment score
-        most_positive_comment: Comment with highest positive sentiment
-        most_negative_comment: Comment with lowest negative sentiment
-        engagement_metrics: Various engagement statistics
+        post: The analyzed post
+        post_sentiment: Sentiment analysis of the post
+        comment_sentiments: List of sentiment analysis for each comment
         analysis_timestamp: When the analysis was performed
-        post_id: ID of the analyzed post (if applicable)
+        metadata: Additional metadata about the analysis
     """
-    total_comments: int
-    sentiment_distribution: Dict[SentimentLabel, int] = field(default_factory=dict)
-    language_distribution: Dict[Language, int] = field(default_factory=dict)
-    average_sentiment: float = 0.0
-    most_positive_comment: Optional[Comment] = None
-    most_negative_comment: Optional[Comment] = None
-    engagement_metrics: Dict[str, Any] = field(default_factory=dict)
+    post: Post
+    post_sentiment: Optional[SentimentScore] = None
+    comment_sentiments: List[Optional[SentimentScore]] = field(default_factory=list)
     analysis_timestamp: datetime = field(default_factory=datetime.now)
-    post_id: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
     
     @property
-    def positive_percentage(self) -> float:
-        """Calculate positive sentiment percentage."""
-        if self.total_comments == 0:
-            return 0.0
-        positive_count = self.sentiment_distribution.get(SentimentLabel.POSITIVE, 0)
-        return (positive_count / self.total_comments) * 100
+    def total_items(self) -> int:
+        """Total number of items (post + comments) analyzed."""
+        return 1 + len(self.post.comments)
     
     @property
-    def negative_percentage(self) -> float:
-        """Calculate negative sentiment percentage."""
-        if self.total_comments == 0:
-            return 0.0
-        negative_count = self.sentiment_distribution.get(SentimentLabel.NEGATIVE, 0)
-        return (negative_count / self.total_comments) * 100
+    def sentiment_distribution(self) -> Dict[str, int]:
+        """Distribution of sentiment labels."""
+        distribution = {"positive": 0, "negative": 0, "neutral": 0}
+        
+        # Count post sentiment
+        if self.post_sentiment:
+            label = self.post_sentiment.label.value
+            distribution[label] += 1
+        
+        # Count comment sentiments
+        for sentiment in self.comment_sentiments:
+            if sentiment:
+                label = sentiment.label.value
+                distribution[label] += 1
+        
+        return distribution
     
     @property
-    def neutral_percentage(self) -> float:
-        """Calculate neutral sentiment percentage."""
-        if self.total_comments == 0:
-            return 0.0
-        neutral_count = self.sentiment_distribution.get(SentimentLabel.NEUTRAL, 0)
-        return (neutral_count / self.total_comments) * 100
+    def average_sentiment(self) -> float:
+        """Average sentiment score across all items."""
+        scores = []
+        
+        if self.post_sentiment:
+            scores.append(self.post_sentiment.compound)
+        
+        for sentiment in self.comment_sentiments:
+            if sentiment:
+                scores.append(sentiment.compound)
+        
+        return sum(scores) / len(scores) if scores else 0.0
 
 
 @dataclass
