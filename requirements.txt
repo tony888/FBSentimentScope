@@ -1,14 +1,36 @@
+# Core dependencies
 requests==2.31.0
-selenium==4.15.0
-beautifulsoup4==4.12.2
 pandas==2.0.3
 numpy==1.24.3
+python-dotenv==1.0.0
+
+# Sentiment analysis
 nltk==3.8.1
 textblob==0.17.1
 vaderSentiment==3.3.2
-python-dotenv==1.0.0
+
+# Thai language support
+pythainlp==4.0.2
+
+# Data visualization
 matplotlib==3.7.2
 seaborn==0.12.2
+
+# Web scraping (optional)
+selenium==4.15.0
+beautifulsoup4==4.12.2
 webdriver-manager==4.0.1
-pythainlp==4.0.2
+
+# Configuration management
+PyYAML==6.0.1
+
+# CLI interface
+click==8.1.7
+
+# Data export
+xlsxwriter==3.1.9
+openpyxl==3.1.2
+
+# Utilities
 urllib3==1.26.20
+certifi>=2017.4.17
