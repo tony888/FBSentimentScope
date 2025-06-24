@@ -72,56 +72,102 @@ def analyze_post(ctx, post_id: str, limit: int, export_format: str, output_dir: 
         click.echo(f"📁 Output directory: {output_dir}")
         
         # Import and initialize services here to avoid circular imports
-        from services.facebook_api_service import FacebookAPIService
-        from services.sentiment_analysis_service import SentimentAnalysisService
-        from exporters.csv_exporter import CSVExporter
-        from visualizers.sentiment_dashboard import SentimentDashboard
-        
+        from ..services.facebook_api_service import FacebookAPIService
+        from ..analyzers.base_analyzer import MultiLanguageAnalyzer
+        from ..exporters import CSVExporter, JSONExporter, ExcelExporter
+        from ..visualizers import SentimentVisualizer, DashboardVisualizer
+        from ..analyzers.language_detector import TextLanguageDetector
+        from ..analyzers.vader_analyzer import VaderSentimentAnalyzer
+        from ..analyzers.thai_analyzer import ThaiSentimentAnalyzer
+
         # Initialize services
         fb_config = config_manager.get_facebook_config()
         api_service = FacebookAPIService(fb_config)
-        sentiment_service = SentimentAnalysisService()
+
+        language_detector = TextLanguageDetector()
+        analyzer = MultiLanguageAnalyzer(language_detector)
+        
+        analyzer.register_analyzer(Language.ENGLISH, VaderSentimentAnalyzer())
+        analyzer.register_analyzer(Language.THAI, ThaiSentimentAnalyzer())
+        
+        # Initialize exporters
+        exporters = {
+            'csv': CSVExporter(output_dir),
+            'json': JSONExporter(output_dir),
+            'excel': ExcelExporter(output_dir)
+        }
+        
+        # Initialize visualizers
+        sentiment_visualizer = SentimentVisualizer(output_dir)
+        dashboard_visualizer = DashboardVisualizer(output_dir)
         
         # Create progress bar
         with click.progressbar(length=100, label='Processing') as bar:
-            # Step 1: Fetch comments (30%)
-            click.echo("\n🔄 Fetching comments from Facebook...")
-            comments = api_service.fetch_comments_from_post(post_id, limit)
+            # Step 1: Fetch post and comments (30%)
+            click.echo("\n🔄 Fetching post and comments from Facebook...")
+            post = api_service.fetch_post_info(post_id)
+            comments = api_service.fetch_comments_from_post(post_id, limit=limit)
             bar.update(30)
+            
+            if not post:
+                click.echo("❌ Post not found or access denied")
+                return
             
             if not comments:
                 click.echo("❌ No comments found for this post")
                 return
             
-            click.echo(f"✅ Fetched {len(comments)} comments")
+            # Add comments to post
+            post.comments = comments
+            click.echo(f"✅ Fetched post with {len(comments)} comments")
             
             # Step 2: Analyze sentiment (40%)
             click.echo("🧠 Analyzing sentiment...")
-            analyzed_comments = sentiment_service.analyze_comments(comments)
-            bar.update(40)
+            try:
+                results = analyzer.analyze_post(post)
+                if not results:
+                    click.echo("❌ Sentiment analysis failed")
+                    return
+                bar.update(40)
+            except Exception as e:
+                click.echo(f"❌ Sentiment analysis error: {e}")
+                return
             
             # Step 3: Export results (20%)
             click.echo(f"💾 Exporting results as {export_format}...")
-            if export_format == 'csv':
-                exporter = CSVExporter()
-                export_file = exporter.export(analyzed_comments, 
-                    os.path.join(output_dir, f"post_{post_id}_analysis.csv"))
-            # Add other export formats here...
-            
-            click.echo(f"✅ Results exported to: {export_file}")
-            bar.update(20)
+            try:
+                exporter = exporters[export_format]
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"post_{post_id}_analysis_{timestamp}"
+                
+                export_file = exporter.export([results], filename)
+                click.echo(f"✅ Results exported to: {export_file}")
+                bar.update(20)
+            except Exception as e:
+                click.echo(f"❌ Export error: {e}")
+                return
             
             # Step 4: Create visualization (10%)
             if create_viz:
                 click.echo("📈 Creating visualization dashboard...")
-                dashboard = SentimentDashboard()
-                viz_file = dashboard.create_dashboard(analyzed_comments,
-                    os.path.join(output_dir, f"post_{post_id}_dashboard.png"))
-                click.echo(f"✅ Dashboard saved to: {viz_file}")
+                try:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    dashboard_file = dashboard_visualizer.create_visualization(
+                        [results], f"post_{post_id}_dashboard_{timestamp}"
+                    )
+                    click.echo(f"✅ Dashboard saved to: {dashboard_file}")
+                    
+                    # Also create sentiment overview
+                    sentiment_file = sentiment_visualizer.create_visualization(
+                        [results], f"post_{post_id}_sentiment_{timestamp}"
+                    )
+                    click.echo(f"✅ Sentiment chart saved to: {sentiment_file}")
+                except Exception as e:
+                    click.echo(f"⚠️  Visualization error: {e}")
             bar.update(10)
         
         # Display summary
-        _display_analysis_summary(analyzed_comments)
+        _display_analysis_summary([results])
         
         click.echo("\n🎉 Analysis completed successfully!")
         
@@ -227,7 +273,7 @@ OUTPUT_DIRECTORY=.
             
             # Test API connection
             click.echo("🔗 Testing Facebook API connection...")
-            from services.facebook_api_service import FacebookAPIService
+            from ..services.facebook_api_service import FacebookAPIService
             
             fb_config = config_manager.get_facebook_config()
             api_service = FacebookAPIService(fb_config)
@@ -288,50 +334,75 @@ def validate_config(ctx):
         sys.exit(1)
 
 
-def _display_analysis_summary(comments):
+def _display_analysis_summary(results):
     """Display analysis summary"""
-    if not comments:
+    if not results:
         return
     
-    # Calculate statistics
-    total_comments = len(comments)
-    sentiment_counts = {}
-    language_counts = {}
+    result = results[0]  # We have one result for single post analysis
     
-    for comment in comments:
-        # Count sentiments
-        if comment.sentiment_label:
-            sentiment_counts[comment.sentiment_label] = sentiment_counts.get(comment.sentiment_label, 0) + 1
+    # Calculate statistics
+    total_items = 1 + len(result.post.comments)  # Post + comments
+    
+    # Count sentiments
+    all_sentiments = []
+    if result.post_sentiment:
+        all_sentiments.append(result.post_sentiment)
+    all_sentiments.extend([s for s in result.comment_sentiments if s])
+    
+    # Count languages
+    language_counts = {}
+    sentiment_counts = {'positive': 0, 'negative': 0, 'neutral': 0}
+    
+    for sentiment in all_sentiments:
+        if sentiment.language:
+            language_counts[sentiment.language] = language_counts.get(sentiment.language, 0) + 1
         
-        # Count languages
-        if comment.language:
-            language_counts[comment.language] = language_counts.get(comment.language, 0) + 1
+        # Categorize sentiment
+        if sentiment.compound >= 0.05:
+            sentiment_counts['positive'] += 1
+        elif sentiment.compound <= -0.05:
+            sentiment_counts['negative'] += 1
+        else:
+            sentiment_counts['neutral'] += 1
     
     # Display summary
     click.echo("\n" + "="*50)
     click.echo("📊 ANALYSIS SUMMARY")
     click.echo("="*50)
-    click.echo(f"Total Comments: {total_comments}")
+    click.echo(f"Post ID: {result.post.id}")
+    click.echo(f"Total Items: {total_items} (1 post + {len(result.post.comments)} comments)")
     
     if sentiment_counts:
         click.echo("\nSentiment Distribution:")
+        total_analyzed = sum(sentiment_counts.values())
         for sentiment, count in sentiment_counts.items():
-            percentage = (count / total_comments) * 100
-            emoji = "😊" if sentiment == SentimentLabel.POSITIVE else "😢" if sentiment == SentimentLabel.NEGATIVE else "😐"
-            click.echo(f"  {emoji} {sentiment.value.capitalize()}: {count} ({percentage:.1f}%)")
+            if total_analyzed > 0:
+                percentage = (count / total_analyzed) * 100
+                emoji = "😊" if sentiment == 'positive' else "😢" if sentiment == 'negative' else "😐"
+                click.echo(f"  {emoji} {sentiment.capitalize()}: {count} ({percentage:.1f}%)")
     
     if language_counts:
         click.echo("\nLanguage Distribution:")
+        total_analyzed = sum(language_counts.values())
         for language, count in language_counts.items():
-            percentage = (count / total_comments) * 100
-            flag = "🇹🇭" if language == Language.THAI else "🇺🇸" if language == Language.ENGLISH else "🌐"
-            click.echo(f"  {flag} {language.value.capitalize()}: {count} ({percentage:.1f}%)")
+            if total_analyzed > 0:
+                percentage = (count / total_analyzed) * 100
+                flag = "🇹🇭" if language == 'th' else "🇺🇸" if language == 'en' else "🌐"
+                click.echo(f"  {flag} {language.upper()}: {count} ({percentage:.1f}%)")
     
     # Calculate average sentiment
-    sentiment_scores = [c.sentiment_score for c in comments if c.sentiment_score is not None]
-    if sentiment_scores:
-        avg_sentiment = sum(sentiment_scores) / len(sentiment_scores)
+    if all_sentiments:
+        avg_sentiment = sum(s.compound for s in all_sentiments) / len(all_sentiments)
         click.echo(f"\nAverage Sentiment: {avg_sentiment:.3f}")
+        
+        # Overall mood
+        if avg_sentiment >= 0.05:
+            click.echo("Overall Mood: 😊 Positive")
+        elif avg_sentiment <= -0.05:
+            click.echo("Overall Mood: 😢 Negative")
+        else:
+            click.echo("Overall Mood: 😐 Neutral")
 
 
 def main():
